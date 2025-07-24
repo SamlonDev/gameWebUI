@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Launcher</title>
+    <style>
+        /* Critical CSS to prevent FOUC */
+        .no-js #loader-wrapper {
+            display: none;
+        }
+        
+        .js #loader-wrapper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.3s ease-out;
+        }
+        
+        .loader {
+            border: 4px solid var(--background-light);
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Loading overlay -->
+    <div id="loader-wrapper">
+        <div class="loader"></div>
+    </div>
+    
+    <div class="app" style="opacity: 0; transition: opacity 0.3s ease-in;">
+        <div class="app-container">
+            <!-- Sidebar Navigation -->
+            <nav class="sidebar">
+                <div class="nav-header">
+                    <h2>Game Launcher</h2>
+                </div>
+                <ul class="nav-menu">
+                    <li class="nav-item active" data-page="library">
+                        <i class="fas fa-gamepad"></i>
+                        <span>Library</span>
+                    </li>
+                <li class="nav-item" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </li>
+            </ul>
+            <div class="user-profile">
+                <img src="https://via.placeholder.com/40" alt="User" class="avatar">
+                <span>User</span>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Library View -->
+            <div class="page" id="library-page">
+                <header class="content-header">
+                    <h2>Game Library</h2>
+                    <div class="header-actions">
+                        <button id="refresh-btn" class="btn btn-icon" title="Refresh">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <div class="search-bar">
+                            <i class="fas fa-search"></i>
+                            <label>
+                                <input type="text" placeholder="Search games...">
+                            </label>
+                        </div>
+                    </div>
+                </header>
+
+                <div class="games-container">
+                    <!-- Game cards will be dynamically inserted here -->
+                    <div class="empty-state">
+                        <i class="fas fa-gamepad"></i>
+                        <h3>No Games Found</h3>
+                        <p>Click 'Add Game' to add your first game</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings View -->
+            <div class="page" id="settings-page" style="display: none;">
+                <header class="top-bar">
+                    <h2>Settings</h2>
+                </header>
+                
+                <div class="settings-container">
+                    <div class="settings-section">
+                        <h3>Game Directories</h3>
+                        <p class="settings-description">Add or remove directories where your games are installed.</p>
+                        
+                        <div class="directory-list" id="directory-list">
+                            <!-- Directories will be added here by JavaScript -->
+                        </div>
+                        
+                        <div class="add-directory">
+                            <label for="new-directory"></label><input type="text" id="new-directory" placeholder="C:\\Path\\To\\Games" class="directory-input">
+                            <button id="add-directory-btn" class="btn btn-primary">Add Directory</button>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-section">
+                        <h3>Appearance</h3>
+                        <div class="form-group">
+                            <p>Click the refresh button in the top-right corner to scan for games.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-actions">
+                        <button id="save-settings" class="btn btn-primary">Save Settings</button>
+                        <button id="reset-settings" class="btn btn-secondary">Reset to Defaults</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    </div>
+</body>
+</html>
