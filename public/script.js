@@ -157,10 +157,15 @@ function renderDirectories() {
     });
 }
 
+let isAddingDirectory = false;
 // Add a new directory
 async function addDirectory(path) {
     if (!path) return;
-    
+
+    // Prevent multiple concurrent executions
+    if (isAddingDirectory) return;
+    isAddingDirectory = true;
+
     // Normalize path (remove trailing slashes)
     path = path.replace(/[\\/]+$/, '');
     
@@ -181,7 +186,8 @@ async function addDirectory(path) {
         const validationResult = await validationResponse.json();
         
         if (!validationResponse.ok || !validationResult.valid) {
-            throw new Error(validationResult.error || 'Directory does not exist or is not accessible');
+            showError(validationResult.error || 'Failed to validate directory');
+            return;
         }
         
         // Add to config
@@ -195,7 +201,8 @@ async function addDirectory(path) {
         });
         
         if (!response.ok) {
-            throw new Error('Failed to save directory');
+            showError('Failed to save configuration. Please try again.');
+            return;
         }
         
         // Update UI
@@ -233,7 +240,7 @@ async function removeDirectory(index) {
         });
         
         if (!response.ok) {
-            throw new Error('Failed to remove directory');
+            showError('Failed to save configuration. Please try again.');
         }
         
         // Update UI

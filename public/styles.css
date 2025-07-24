@@ -10,6 +10,7 @@
     --danger-color: #d63031;
     --border-radius: 8px;
     --transition: all 0.3s ease;
+    --border-color: rgba(255, 255, 255, 0.1);
 }
 
 * {

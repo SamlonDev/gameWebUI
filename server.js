@@ -164,7 +164,6 @@ async function scanDirectory(dirPath) {
                 }
             } catch (error) {
                 console.error(`Error reading game directory ${gameDir}:`, error);
-                continue;
             }
         }
 
@@ -229,7 +228,9 @@ async function validateDirectory(dirPath) {
             } else if (err.code === 'EACCES') {
                 return { valid: false, error: 'Permission denied' };
             }
-            throw err;
+
+            console.error('Error accessing directory:', err);
+            return { valid: false, error: 'Error accessing directory' };
         }
     } catch (error) {
         console.error('Error validating directory:', error);
