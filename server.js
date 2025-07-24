@@ -5,12 +5,85 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
 import path from 'path';
+import dotenv from 'dotenv';
+import SGDB from "steamgriddb";
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Configure SteamGridDB API
+const STEAMGRID_API_KEY = process.env.STEAMGRID;
+const client = new SGDB(STEAMGRID_API_KEY);
+
+// Cache for storing game assets
+const gameAssetCache = new Map();
+
+/**
+ * Search for a game on SteamGridDB
+ * @param {string} gameName - Name of the game to search for
+ * @returns {Promise<Object|null>} - Game data or null if not found
+ */
+async function searchGameOnSteamGridDB(gameName) {
+    try {
+        const games = await client.searchGame(gameName);
+        return games && games.length > 0 ? games[0] : null;
+    } catch (error) {
+        console.error('Error searching SteamGridDB:', error.message);
+        return null;
+    }
+}
+
+/**
+ * Get game cover from SteamGridDB
+ * @param {string} gameId - SteamGridDB game ID
+ * @returns {Promise<string|null>} - URL of the game cover or null if not found
+ */
+async function getGameCover(gameId) {
+    const cacheKey = `cover-${gameId}`;
+    if (gameAssetCache.has(cacheKey)) {
+        return gameAssetCache.get(cacheKey);
+    }
+
+    try {
+        // First try to get 2:3 aspect ratio grids (600x900 is 2:3)
+        const grids = await client.getGridsById(gameId, {
+            dimensions: ['600x900'],
+            types: ['static'],
+            styles: ['alternate', 'blurred', 'material', 'no_logo']
+        });
+
+        // Filter for 2:3 aspect ratio (within a small tolerance)
+        const filteredGrids = grids ? grids.filter(grid => {
+            if (!grid.width || !grid.height) return false;
+            const aspectRatio = grid.width / grid.height;
+            // Check if aspect ratio is approximately 2:3 (0.666...)
+            return Math.abs(aspectRatio - (2/3)) < 0.1; // 10% tolerance
+        }) : [];
+
+        if (filteredGrids.length > 0) {
+            // Sort by resolution (area) in descending order
+            const sortedByResolution = [...filteredGrids].sort((a, b) => 
+                (b.width * b.height) - (a.width * a.height)
+            );
+            
+            const coverUrl = sortedByResolution[0].url;
+            gameAssetCache.set(cacheKey, coverUrl);
+            return coverUrl;
+        }
+        
+        // If no 2:3 grids found, return null
+        console.log(`No 2:3 aspect ratio grid found for game ID: ${gameId}`);
+        return null;
+    } catch (error) {
+        console.error('Error fetching game cover:', error.message);
+        return null;
+    }
+}
 
 // Middleware
 app.use(cors());
@@ -143,28 +216,78 @@ async function scanDirectory(dirPath) {
             if (!entry.isDirectory()) continue;
 
             const gameDir = path.join(dirPath, entry.name);
+            let gameFiles = [];
             
             try {
-                const gameFiles = await fs.readdir(gameDir);
-                
-                // Find main executable
-                const mainExecutable = findMainExecutable(gameFiles, entry.name);
+                gameFiles = (await fs.readdir(gameDir)).map(f => f.toLowerCase());
+            } catch (err) {
+                console.error(`Error reading game directory ${gameDir}:`, err);
+                continue;
+            }
+            
+            // Find main executable
+            const mainExecutable = findMainExecutable(gameFiles, entry.name);
+            if (!mainExecutable) continue;
 
-                if (mainExecutable) {
-                    const gameName = formatGameName(entry.name);
-                    games.push({
-                        id: `${entry.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-                        name: gameName,
-                        path: path.join(gameDir, mainExecutable),
-                        icon: '',
-                        lastPlayed: null,
-                        playTime: 0,
-                        added: new Date().toISOString()
-                    });
+            const gameName = formatGameName(entry.name);
+            const gamePath = path.join(gameDir, mainExecutable);
+            
+            // Create base game object
+            const game = {
+                id: `${entry.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+                name: gameName,
+                path: gamePath,
+                icon: '',
+                description: '',
+                lastPlayed: null,
+                added: new Date().toISOString(),
+                directory: entry.name
+            };
+            
+            // Try to find game on SteamGridDB
+            try {
+                const steamGame = await searchGameOnSteamGridDB(gameName);
+                if (steamGame) {
+                    game.name = steamGame.name || gameName; // Use the name from SteamGridDB if available
+                    
+                    // Get game cover
+                    const coverUrl = await getGameCover(steamGame.id);
+                    if (coverUrl) {
+                        game.icon = coverUrl;
+                    }
+                    
+                    // Get game description if available
+                    if (steamGame.release_date) {
+                        const year = new Date(steamGame.release_date * 1000).getFullYear();
+                        game.description = `Released: ${year}`;
+                    }
                 }
             } catch (error) {
-                console.error(`Error reading game directory ${gameDir}:`, error);
+                console.error(`Error fetching data from SteamGridDB for ${gameName}:`, error.message);
             }
+            
+            // If still no description, try to read from local files
+            if (!game.description) {
+                const metadataFiles = {
+                    'description.txt': (content) => content.trim(),
+                    'about.txt': (content) => content.trim(),
+                    'readme.txt': (content) => content.split('\n')[0].trim()
+                };
+                
+                for (const [file, processor] of Object.entries(metadataFiles)) {
+                    if (gameFiles.includes(file)) {
+                        try {
+                            const content = await fs.readFile(path.join(gameDir, file), 'utf-8');
+                            game.description = processor(content).substring(0, 200);
+                            break;
+                        } catch (err) {
+                            console.error(`Error reading ${file} for ${gameName}:`, err);
+                        }
+                    }
+                }
+            }
+            
+            games.push(game);
         }
 
         return games;
@@ -237,6 +360,35 @@ async function validateDirectory(dirPath) {
         return { valid: false, error: 'Error validating directory' };
     }
 }
+
+// Serve game assets (icons, etc.)
+app.get('/games/:gameDir/:filename', async (req, res) => {
+    try {
+        const { gameDir, filename } = req.params;
+        const decodedGameDir = decodeURIComponent(gameDir);
+        
+        // Find which directory contains this game
+        const config = await readConfig();
+        const gameDirs = config.directories || [];
+        
+        for (const dir of gameDirs) {
+            const gamePath = path.join(dir, decodedGameDir);
+            try {
+                const filePath = path.join(gamePath, filename);
+                await fs.access(filePath);
+                return res.sendFile(filePath);
+            } catch (err) {
+                // File not found in this directory, continue to next
+
+            }
+        }
+        
+        res.status(404).send('File not found');
+    } catch (error) {
+        console.error('Error serving game asset:', error);
+        res.status(500).send('Error serving file');
+    }
+});
 
 // API Endpoints
 // Validate directory endpoint
