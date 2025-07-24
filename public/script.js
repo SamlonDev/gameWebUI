@@ -45,14 +45,59 @@ async function apiFetch(endpoint, options = {}) {
 
 // Config functions
 async function loadConfig() {
-    return apiFetch(ENDPOINTS.CONFIG);
+    try {
+        const data = await apiFetch(ENDPOINTS.CONFIG);
+        
+        // Ensure we have the expected structure
+        if (data) {
+            // Handle migration from gameDirectories to directories if needed
+            if (data.gameDirectories && !data.directories) {
+                data.directories = data.gameDirectories;
+                // Save the migrated config
+                await saveConfig({ directories: data.directories });
+            }
+            
+            // Update the global config with directories
+            config.directories = data.directories || [];
+            
+            // If we're on the settings page, ensure the directories are rendered
+            if (window.location.hash === '#settings') {
+                renderDirectories();
+            }
+        }
+        
+        return data || { directories: [] };
+    } catch (error) {
+        console.error('Error loading configuration:', error);
+        showError('Failed to load configuration. Using default settings.');
+        return { directories: [] };
+    }
 }
 
-async function saveConfig(config) {
-    return apiFetch(ENDPOINTS.CONFIG, {
-        method: 'POST',
-        body: JSON.stringify(config)
-    });
+async function saveConfig(updatedConfig) {
+    try {
+        // Ensure we only send the directories to the server
+        const configToSave = {
+            directories: updatedConfig.directories || []
+        };
+        
+        const response = await apiFetch(ENDPOINTS.CONFIG, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(configToSave)
+        });
+        
+        // Update local config with the saved data
+        if (response && response.directories) {
+            config.directories = response.directories;
+        }
+        
+        return response;
+    } catch (error) {
+        console.error('Error saving configuration:', error);
+        showError('Failed to save configuration. Please try again.');
+        throw error;
+    }
 }
 
 async function scanForGames() {
@@ -70,8 +115,197 @@ const newDirectoryInput = document.getElementById('new-directory');
 const addDirectoryBtn = document.getElementById('add-directory');
 
 // Global state
-let config = {};
+let config = {
+    directories: []
+};
 
+// Render directories in the UI
+function renderDirectories() {
+    if (!directoryList) return;
+    
+    directoryList.innerHTML = '';
+    
+    if (config.directories.length === 0) {
+        directoryList.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-folder-open"></i>
+                <p>No directories added yet</p>
+            </div>
+        `;
+        return;
+    }
+    
+    config.directories.forEach((dir, index) => {
+        const dirElement = document.createElement('div');
+        dirElement.className = 'directory-item';
+        dirElement.innerHTML = `
+            <span class="path">${escapeHtml(dir)}</span>
+            <button class="remove-btn" data-index="${index}" title="Remove directory">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        directoryList.appendChild(dirElement);
+    });
+    
+    // Add event listeners to remove buttons
+    document.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.getAttribute('data-index'));
+            removeDirectory(index);
+        });
+    });
+}
+
+// Add a new directory
+async function addDirectory(path) {
+    if (!path) return;
+    
+    // Normalize path (remove trailing slashes)
+    path = path.replace(/[\\/]+$/, '');
+    
+    // Check if directory already exists in the list
+    if (config.directories.includes(path)) {
+        showError('This directory is already in the list');
+        return;
+    }
+    
+    try {
+        // First validate the directory exists on the server
+        const validationResponse = await fetch('/api/validate-directory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+        
+        const validationResult = await validationResponse.json();
+        
+        if (!validationResponse.ok || !validationResult.valid) {
+            throw new Error(validationResult.error || 'Directory does not exist or is not accessible');
+        }
+        
+        // Add to config
+        config.directories.push(path);
+        
+        // Save to server
+        const response = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ directories: config.directories })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save directory');
+        }
+        
+        // Update UI
+        renderDirectories();
+        newDirectoryInput.value = '';
+        showNotification('Directory added successfully. Scanning for games...');
+        
+        // Force a game search after adding a directory
+        try {
+            await startAutoScan();
+        } catch (scanError) {
+            console.error('Error during game scan after adding directory:', scanError);
+            // Don't show error to user, just log it
+        }
+        
+    } catch (error) {
+        console.error('Error adding directory:', error);
+        showError('Failed to add directory: ' + (error.message || 'Unknown error'));
+    }
+}
+
+// Remove a directory
+async function removeDirectory(index) {
+    if (index < 0 || index >= config.directories.length) return;
+    
+    try {
+        // Remove from config
+        config.directories.splice(index, 1);
+        
+        // Save to server
+        const response = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ directories: config.directories })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to remove directory');
+        }
+        
+        // Update UI
+        renderDirectories();
+        showNotification('Directory removed successfully');
+        
+    } catch (error) {
+        console.error('Error removing directory:', error);
+        showError('Failed to remove directory: ' + (error.message || 'Unknown error'));
+    }
+}
+
+// Helper function to escape HTML
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// Show notification
+function showNotification(message, duration = 3000) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Show notification
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 10);
+    
+    // Hide and remove after duration
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, duration);
+}
+
+function showError(message, duration = 5000) {
+    const notification = document.createElement('div');
+    notification.className = 'notification error';
+
+    // Create notification content with icon
+    notification.innerHTML = `
+        <div class="notification-content">
+            <i class="fas fa-exclamation-circle"></i>
+            <span>${message}</span>
+        </div>
+    `;
+
+    // Add to body
+    document.body.appendChild(notification);
+
+    // Show notification with animation
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 10);
+
+    // Hide and remove after duration
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, duration);
+}
 // Sample game data (in a real app, this would come from a database)
 let games = [];
 
@@ -105,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 50);
         
         try {
-            // Load configuration
+            // Load configuration first
             config = await loadConfig();
             
             // Initialize UI components
@@ -120,9 +354,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
             
+            // Add directory form submission
+            if (addDirectoryBtn && newDirectoryInput) {
+                // Handle add directory button click
+                addDirectoryBtn.addEventListener('click', () => {
+                    const path = newDirectoryInput.value.trim();
+                    if (path) {
+                        addDirectory(path);
+                    } else {
+                        showError('Please enter a directory path');
+                    }
+                });
+                
+                // Handle Enter key in directory input
+                newDirectoryInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        const path = newDirectoryInput.value.trim();
+                        if (path) {
+                            addDirectory(path);
+                        } else {
+                            showError('Please enter a directory path');
+                        }
+                    }
+                });
+            }
+            
             // Show library by default
             showPage('library');
-            
+
             // Initial scan
             startAutoScan();
         } catch (error) {
@@ -156,62 +415,25 @@ function showPage(pageId) {
     pages.forEach(page => {
         if (page.id === `${pageId}-page`) {
             page.classList.add('active');
+
+            // If showing settings page, ensure directories are loaded
+            if (pageId === 'settings') {
+                loadConfig().then(() => {
+                    renderDirectories();
+                }).catch(error => {
+                    console.error('Error loading config for settings:', error);
+                    showError('Failed to load directory list');
+                });
+            }
         } else {
             page.classList.remove('active');
         }
     });
 }
 
-function renderDirectories() {
-    if (!directoryList || !config.gameDirectories) return;
-    
-    directoryList.innerHTML = '';
-    
-    if (config.gameDirectories.length === 0) {
-        directoryList.innerHTML = '<div class="empty-directories">No directories added yet</div>';
-        return;
-    }
-    
-    config.gameDirectories.forEach(directory => {
-        const dirElement = document.createElement('div');
-        dirElement.className = 'directory-item';
-        dirElement.innerHTML = `
-            <span class="path">${directory}</span>
-            <button class="remove-btn" data-path="${directory}">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
-        directoryList.appendChild(dirElement);
-        
-        // Add event listener to remove button
-        const removeBtn = dirElement.querySelector('.remove-btn');
-        removeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeDirectory(directory);
-        });
-    });
-}
 
-async function removeDirectory(path) {
-    if (!confirm(`Remove directory "${path}" from the list?`)) return;
 
-    try {
-        // Update config
-        config.gameDirectories = config.gameDirectories.filter(dir => dir !== path);
-        await saveConfig(config);
 
-        // Update UI
-        renderDirectories();
-
-        // Rescan if auto-scan is enabled
-        if (config.autoScan) {
-            await startAutoScan();
-        }
-    } catch (error) {
-        console.error('Error removing directory:', error);
-        showError('Failed to remove directory. Please try again.');
-    }
-}
 
 // Manual game scanning
 async function startAutoScan() {
@@ -284,11 +506,6 @@ addDirectoryBtn?.addEventListener('click', async () => {
             // Update UI
             renderDirectories();
             newDirectoryInput.value = '';
-            
-            // If auto-scan is enabled, scan the new directory
-            if (config.autoScan) {
-                await startAutoScan();
-            }
         }
     } catch (error) {
         console.error('Error adding directory:', error);
@@ -397,28 +614,11 @@ function launchGame(gameId) {
     
     // Update last played time
     game.lastPlayed = new Date();
-    saveGames();
     renderGames();
 }
 
 // Show error message
-function showError(message) {
-    const gamesContainer = document.querySelector('.games-container');
-    if (!gamesContainer) return;
-    
-    gamesContainer.innerHTML = `
-        <div class="error-state">
-            <i class="fas fa-exclamation-triangle"></i>
-            <h3>Error</h3>
-            <p>${message}</p>
-            <button id="retry-btn" class="btn btn-primary" style="margin-top: 20px;">
-                <i class="fas fa-redo"></i> Retry
-            </button>
-        </div>
-    `;
-    
-    document.getElementById('retry-btn')?.addEventListener('click', () => window.location.reload());
-}
+
 
 // Format date
 function formatDate(dateString) {

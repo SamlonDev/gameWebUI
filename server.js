@@ -21,7 +21,7 @@ app.use(express.static('public'));
 // Default config
 const defaultConfig = {
     version: 1,
-    gameDirectories: [
+    directories: [
         "/home/salmon/Games",
         "/home/salmon/.local/share/Steam/steamapps/common"
     ]
@@ -91,11 +91,8 @@ async function writeConfig(newConfig) {
                 mergedConfig = { ...defaultConfig, ...currentConfig, ...newConfig };
                 
                 // Preserve arrays and nested objects if they exist in current config
-                if (currentConfig.gameDirectories && !newConfig.gameDirectories) {
-                    mergedConfig.gameDirectories = currentConfig.gameDirectories;
-                }
-                if (currentConfig.theme && !newConfig.theme) {
-                    mergedConfig.theme = { ...defaultConfig.theme, ...currentConfig.theme };
+                if (currentConfig.directories && !newConfig.directories) {
+                    mergedConfig.directories = currentConfig.directories;
                 }
             } catch (error) {
                 console.error('Error reading existing config for merge:', error);
@@ -106,14 +103,14 @@ async function writeConfig(newConfig) {
             // No existing config, just merge defaults with new values
             mergedConfig = { ...defaultConfig, ...newConfig };
         }
-        
+
         // Ensure version is always set to current
         mergedConfig.version = defaultConfig.version;
-        
+
         // Write the config file with pretty printing
         const configStr = JSON.stringify(mergedConfig, null, 2) + '\n'; // Add newline at end
         await fs.writeFile(CONFIG_FILE, configStr, 'utf-8');
-        
+
         console.log('Config saved successfully to', CONFIG_FILE);
         return mergedConfig;
     } catch (error) {
@@ -132,31 +129,45 @@ function isExecutable(filename) {
 // Scan a directory for games
 async function scanDirectory(dirPath) {
     try {
+        // Validate directory before scanning
+        const validation = await validateDirectory(dirPath);
+        if (!validation.valid) {
+            console.error(`Cannot scan directory ${dirPath}: ${validation.error}`);
+            return [];
+        }
+
         const entries = await fs.readdir(dirPath, { withFileTypes: true });
         const games = [];
-        
+
         for (const entry of entries) {
             if (!entry.isDirectory()) continue;
-            
+
             const gameDir = path.join(dirPath, entry.name);
-            const gameFiles = await fs.readdir(gameDir);
             
-            // Find main executable
-            const mainExecutable = findMainExecutable(gameFiles, entry.name);
-            
-            if (mainExecutable) {
-                const gameName = formatGameName(entry.name);
-                games.push({
-                    id: `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    name: gameName,
-                    path: path.join(gameDir, mainExecutable),
-                    lastPlayed: null,
-                    playTime: 0,
-                    icon: `https://via.placeholder.com/200x280/2d3436/6c5ce7?text=${encodeURIComponent(gameName.charAt(0).toUpperCase())}`
-                });
+            try {
+                const gameFiles = await fs.readdir(gameDir);
+                
+                // Find main executable
+                const mainExecutable = findMainExecutable(gameFiles, entry.name);
+
+                if (mainExecutable) {
+                    const gameName = formatGameName(entry.name);
+                    games.push({
+                        id: `${entry.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+                        name: gameName,
+                        path: path.join(gameDir, mainExecutable),
+                        icon: '',
+                        lastPlayed: null,
+                        playTime: 0,
+                        added: new Date().toISOString()
+                    });
+                }
+            } catch (error) {
+                console.error(`Error reading game directory ${gameDir}:`, error);
+                continue;
             }
         }
-        
+
         return games;
     } catch (error) {
         console.error(`Error scanning directory ${dirPath}:`, error);
@@ -167,21 +178,21 @@ async function scanDirectory(dirPath) {
 // Find main executable in game directory
 function findMainExecutable(files, dirName) {
     const dirNameLower = dirName.toLowerCase();
-    
+
     // First pass: look for exact or close matches
     const possibleExecutables = files.filter(file => {
         const fileName = file.toLowerCase();
-        return isExecutable(file) && 
-               (fileName.startsWith(dirNameLower) || 
+        return isExecutable(file) &&
+               (fileName.startsWith(dirNameLower) ||
                 fileName.includes(dirNameLower) ||
                 dirNameLower.includes(fileName.split('.')[0].toLowerCase()));
     });
-    
+
     // If we found matches, return the first one
     if (possibleExecutables.length > 0) {
         return possibleExecutables[0];
     }
-    
+
     // Second pass: look for any executable if no good match found
     return files.find(isExecutable);
 }
@@ -194,7 +205,56 @@ function formatGameName(dirName) {
         .trim();
 }
 
-// API Routes
+// Helper function to validate directory
+async function validateDirectory(dirPath) {
+    try {
+        // Check if path is absolute
+        if (!path.isAbsolute(dirPath)) {
+            return { valid: false, error: 'Path must be absolute' };
+        }
+
+        // Check if directory exists and is accessible
+        try {
+            await fs.access(dirPath, fs.constants.R_OK | fs.constants.X_OK);
+            const stats = await fs.stat(dirPath);
+            
+            if (!stats.isDirectory()) {
+                return { valid: false, error: 'Path is not a directory' };
+            }
+            
+            return { valid: true };
+        } catch (err) {
+            if (err.code === 'ENOENT') {
+                return { valid: false, error: 'Directory does not exist' };
+            } else if (err.code === 'EACCES') {
+                return { valid: false, error: 'Permission denied' };
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error('Error validating directory:', error);
+        return { valid: false, error: 'Error validating directory' };
+    }
+}
+
+// API Endpoints
+// Validate directory endpoint
+app.post('/api/validate-directory', express.json(), async (req, res) => {
+    try {
+        const { path: dirPath } = req.body;
+        
+        if (!dirPath) {
+            return res.status(400).json({ valid: false, error: 'Path is required' });
+        }
+        
+        const result = await validateDirectory(dirPath);
+        res.json(result);
+    } catch (error) {
+        console.error('Error validating directory:', error);
+        res.status(500).json({ valid: false, error: 'Internal server error' });
+    }
+});
+
 app.get('/api/config', async (req, res) => {
     try {
         const config = await readConfig();
@@ -212,9 +272,9 @@ app.post('/api/config', async (req, res) => {
         res.json({ success: true, config: updatedConfig });
     } catch (error) {
         console.error('Error saving config:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to save config',
-            details: error.message 
+            details: error.message
         });
     }
 });
@@ -224,16 +284,16 @@ app.get('/api/games', async (req, res) => {
         console.log('Scanning for games...');
         const config = await readConfig();
         console.log('Using config:', JSON.stringify(config, null, 2));
-        
+
         let allGames = [];
-        
-        if (!config.gameDirectories || !Array.isArray(config.gameDirectories)) {
+
+        if (!config.directories || !Array.isArray(config.directories)) {
             console.warn('No game directories configured');
             return res.json([]);
         }
         
         // Scan all directories for games
-        for (const dir of config.gameDirectories) {
+        for (const dir of config.directories) {
             try {
                 console.log(`Scanning directory: ${dir}`);
                 const games = await scanDirectory(dir);
