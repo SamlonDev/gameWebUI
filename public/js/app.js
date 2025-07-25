@@ -4,9 +4,11 @@ import { initUI, showPage } from './ui.js';
 import { loadGames, startAutoScan, launchGame } from './games.js';
 import { showError } from './utils.js';
 
-// Make some functions available globally for HTML event handlers
+// Make some functions and config available globally for HTML event handlers
 window.startAutoScan = startAutoScan;
 window.launchGame = launchGame;
+window.config = { cardSize: 'medium' }; // Default config
+// saveConfig and loadConfig will be set by initConfig
 
 // Initialize the app
 document.addEventListener('DOMContentLoaded', async () => {
@@ -30,20 +32,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 50);
         
-        // Initialize UI
-        initUI({
+        // Initialize config first
+        await initConfig({
+            directoryList: document.getElementById('directory-list'),
+            newDirectoryInput: document.getElementById('new-directory'),
+            addDirectoryBtn: document.getElementById('add-directory')
+        });
+        
+        // Initialize UI after config is loaded
+        await initUI({
             navItems: document.querySelectorAll('.nav-item'),
             pages: document.querySelectorAll('.page'),
             searchInput: document.querySelector('.search-bar input'),
             refreshBtn: document.getElementById('refresh-btn'),
             navContainer: document.querySelector('.nav-container')
-        });
-        
-        // Initialize config
-        await initConfig({
-            directoryList: document.getElementById('directory-list'),
-            newDirectoryInput: document.getElementById('new-directory'),
-            addDirectoryBtn: document.getElementById('add-directory')
         });
         
         // Load games from localStorage
@@ -56,7 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Initial scan if on the library page
         if (defaultPage === 'library') {
-            startAutoScan();
+            await startAutoScan();
         }
     } catch (error) {
         console.error('Error initializing app:', error);

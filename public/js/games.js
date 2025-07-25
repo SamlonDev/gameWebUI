@@ -1,6 +1,6 @@
-import { scanForGames } from './api.js';
-import { showError, showNotification } from './utils.js';
-import { renderGames } from './ui.js';
+import {scanForGames} from './api.js';
+import {showError, showNotification} from './utils.js';
+import {renderGames} from './ui.js';
 
 // Game state
 let games = [];
@@ -41,12 +41,12 @@ export async function startAutoScan() {
                 </div>
             `;
         }
-        
+
         // Perform the scan
         console.log('Calling scanForGames...');
         const gamesList = await scanForGames();
         console.log('Scan result:', gamesList);
-        
+
         if (Array.isArray(gamesList)) {
             console.log(`Found ${gamesList.length} games`);
             games = gamesList;  // The server returns the array directly, not as {games: [...]}
@@ -56,27 +56,17 @@ export async function startAutoScan() {
             return games;
         } else {
             const error = new Error('Invalid response format from server');
-            console.error('Invalid response format:', {
-                result,
-                hasGames: !!result?.games,
-                isArray: Array.isArray(result?.games)
-            });
             console.error(error);
         }
     } catch (error) {
         console.error('Error in startAutoScan:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack,
-            response: error.response ? {
-                status: error.response.status,
-                statusText: error.response.statusText,
-                url: error.response.url
+            message: error.message, name: error.name, stack: error.stack, response: error.response ? {
+                status: error.response.status, statusText: error.response.statusText, url: error.response.url
             } : 'No response object'
         });
-        
+
         showError(`Failed to scan for games: ${error.message || 'Unknown error'}`);
-        
+
         // Show error in the UI
         const gamesContainer = document.getElementById('games-container');
         if (gamesContainer) {
@@ -91,7 +81,7 @@ export async function startAutoScan() {
                 </div>
             `;
         }
-        
+
         return [];
     }
 }
@@ -103,15 +93,15 @@ export function launchGame(gameId) {
         showError('Game not found');
         return;
     }
-    
+
     // Update last played time
     game.lastPlayed = new Date().toISOString();
     saveGames();
-    
+
     // In a real app, this would launch the game
     showNotification(`Launching ${game.title}...`);
     console.log('Launching game:', game);
-    
+
     // Simulate game launch
     setTimeout(() => {
         // Update UI to show game is running
@@ -120,7 +110,7 @@ export function launchGame(gameId) {
             playButton.innerHTML = '<i class="fas fa-stop"></i> Stop';
             playButton.classList.add('playing');
         }
-        
+
         // Simulate game closing after some time
         setTimeout(() => {
             if (playButton) {

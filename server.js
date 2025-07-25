@@ -97,7 +97,8 @@ const defaultConfig = {
     directories: [
         "/home/salmon/Games",
         "/home/salmon/.local/share/Steam/steamapps/common"
-    ]
+    ],
+    cardSize: "medium"
 };
 
 // Config file path
@@ -163,10 +164,18 @@ async function writeConfig(newConfig) {
                 const currentConfig = JSON.parse(await fs.readFile(CONFIG_FILE, 'utf-8'));
                 mergedConfig = { ...defaultConfig, ...currentConfig, ...newConfig };
                 
-                // Preserve arrays and nested objects if they exist in current config
-                if (currentConfig.directories && !newConfig.directories) {
-                    mergedConfig.directories = currentConfig.directories;
-                }
+                // Preserve all non-array config properties that aren't being updated
+                Object.keys(currentConfig).forEach(key => {
+                    // Preserve existing values if they're not being updated and aren't arrays
+                    if (!(key in newConfig) && !Array.isArray(currentConfig[key])) {
+                        mergedConfig[key] = currentConfig[key];
+                    }
+                    
+                    // Special handling for arrays - only preserve if not being updated
+                    if (Array.isArray(currentConfig[key]) && !(key in newConfig)) {
+                        mergedConfig[key] = currentConfig[key];
+                    }
+                });
             } catch (error) {
                 console.error('Error reading existing config for merge:', error);
                 // If we can't read the current config, use defaults with new values
@@ -254,12 +263,6 @@ async function scanDirectory(dirPath) {
                     const coverUrl = await getGameCover(steamGame.id);
                     if (coverUrl) {
                         game.icon = coverUrl;
-                    }
-                    
-                    // Get game description if available
-                    if (steamGame.release_date) {
-                        const year = new Date(steamGame.release_date * 1000).getFullYear();
-                        game.description = `Released: ${year}`;
                     }
                 }
             } catch (error) {

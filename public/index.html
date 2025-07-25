@@ -51,9 +51,6 @@
     <div class="app-container">
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
-            <div class="nav-header">
-                <h2>Game Launcher</h2>
-            </div>
             <ul class="nav-menu">
                 <li class="nav-item active" data-page="library">
                     <i class="fas fa-gamepad"></i>
@@ -84,6 +81,15 @@
                         </div>
                     </div>
                 </header>
+
+                <!-- Card Size Controls -->
+                <div class="card-size-controls">
+                    <span>Card Size:</span>
+                    <div class="slider-container">
+                        <label for="cardSizeSlider"></label>
+                        <input type="range" min="0" max="3" value="1" step="1" class="card-size-slider" id="cardSizeSlider">
+                    </div>
+                </div>
 
                 <div id="games-container" class="games-container">
                     <!-- Game cards will be dynamically inserted here -->

@@ -3,7 +3,8 @@ import {escapeHtml, showError, showNotification} from './utils.js';
 
 // Global state
 export let config = {
-    directories: []
+    directories: [],
+    cardSize: 'medium' // small, medium, large, xlarge
 };
 
 // DOM Elements
@@ -12,34 +13,67 @@ let newDirectoryInput;
 let addDirectoryBtn;
 
 // Initialize configuration module
-export function initConfig(elements) {
-    ({ directoryList, newDirectoryInput, addDirectoryBtn } = elements);
-    setupEventListeners();
+export async function initConfig(elements) {
+    try {
+        console.log('Initializing config module...');
+        ({ directoryList, newDirectoryInput, addDirectoryBtn } = elements);
+        
+        // Expose functions to window first
+        window.saveConfig = saveConfig;
+        window.loadConfig = loadConfig;
+        console.log('Exposed config functions to window');
+        
+        // Load the config
+        await loadConfig();
+        
+        // Set up event listeners
+        setupEventListeners();
+        console.log('Config module initialized');
+    } catch (error) {
+        console.error('Error initializing config module:', error);
+        throw error;
+    }
 }
 
 // Load configuration
 export async function loadConfig() {
     try {
+        console.log('Attempting to load config from API...');
         const data = await apiLoadConfig();
+        console.log('API response data:', data);
         
         if (data) {
-            // Handle migration from gameDirectories to directories if needed
-            if (data.gameDirectories && !data.directories) {
-                data.directories = data.gameDirectories;
-                // Save the migrated config
-                await saveConfig();
+            
+            // Update the global config while preserving default values
+            config = { 
+                ...config, // Default values first
+                ...data,   // Then override with saved values
+                directories: data.directories || [] // Ensure directories array exists
+            };
+            
+            // Make sure cardSize is one of the allowed values
+            const validSizes = ['small', 'medium', 'large', 'xlarge'];
+            if (!validSizes.includes(config.cardSize)) {
+                console.log(`Invalid cardSize '${config.cardSize}', defaulting to 'medium'`);
+                config.cardSize = 'medium';
             }
             
-            // Update the global config with directories
-            config.directories = data.directories || [];
+            console.log('Final config after processing:', config);
             
-            // If we're on the settings page, ensure the directories are rendered
-            if (window.location.hash === '#settings') {
-                renderDirectories();
-            }
+            // Store config in window for global access
+            window.config = config;
+            
+            // Render directories after loading
+            renderDirectories();
+            
+            return config;
         }
         
-        return { directories: config.directories };
+        // If no config exists, save the default one
+        await saveConfig();
+        renderDirectories();
+        return config;
+        
     } catch (error) {
         console.error('Error loading configuration:', error);
         showError('Failed to load configuration. Using default settings.');
@@ -49,21 +83,70 @@ export async function loadConfig() {
 
 // Save configuration
 export async function saveConfig() {
+    console.log('Saving configuration...', config);
+
+    // Don't try to save if we don't have a valid config
+    if (!config || typeof config !== 'object') {
+        console.error('Invalid config object, cannot save');
+        return false;
+    }
+
     try {
-        const response = await apiSaveConfig(config);
-        
-        // Update local config with the saved data
-        if (response && response.directories) {
-            config.directories = response.directories;
+        // Create a clean copy of the config to save with only the necessary fields
+        const dataToSave = {
+            version: config.version || 1,
+            directories: Array.isArray(config.directories) ? [...config.directories] : [],
+            cardSize: ['small', 'medium', 'large', 'xlarge'].includes(config.cardSize) 
+                ? config.cardSize 
+                : 'medium'
+        };
+
+        console.log('Sending to apiSaveConfig:', dataToSave);
+        const response = await apiSaveConfig(dataToSave);
+
+        if (response && typeof response === 'object') {
+            // Only update the local config with the response if it's valid
+            // Filter out any unwanted fields from the response
+            const cleanConfig = {
+                version: response.version || dataToSave.version,
+                directories: Array.isArray(response.directories) 
+                    ? [...response.directories] 
+                    : dataToSave.directories,
+                cardSize: ['small', 'medium', 'large', 'xlarge'].includes(response.cardSize)
+                    ? response.cardSize
+                    : dataToSave.cardSize
+            };
+
+            Object.assign(config, cleanConfig);
+            console.log('Configuration saved and updated successfully');
+            showNotification('Settings saved!', 'success');
+            return true;
+        } else {
+            console.error('Invalid response from server when saving config');
+            return false;
         }
-        
-        return response;
     } catch (error) {
-        console.error('Error saving configuration:', error);
-        showError('Failed to save configuration. Please try again.');
-        throw error;
+        console.error('Error in saveConfig:', {
+            error,
+            errorMessage: error.message,
+            stack: error.stack
+        });
+
+        // Only show error to user if it's not a network error (which might be temporary)
+        if (error.name !== 'TypeError' || error.message.indexOf('NetworkError') === -1) {
+            showError('Failed to save configuration. Please check the console for details.');
+        } else {
+            console.log('Network error when saving config, will retry on next change');
+        }
+
+        return false;
     }
 }
+
+// Expose functions to window for global access
+console.log('Exposing config functions to window');
+window.saveConfig = saveConfig;
+window.loadConfig = loadConfig;
 
 // Add a new directory
 export async function addDirectory(path) {

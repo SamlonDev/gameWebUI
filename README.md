@@ -6,7 +6,6 @@ A modern, responsive web-based game launcher with automatic game detection. This
 
 - 🎮 Automatic game detection from specified directories
 - 🖥️ Clean, modern, and responsive UI
-- 🎨 Dark/light theme support
 - ⚡ Fast and lightweight
 - 🔄 Auto-scan for new games
 - ⚙️ Configurable settings
@@ -30,16 +29,22 @@ The application follows a client-server architecture:
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
-   cd game-launcher
+   git clone https://github.com/SalmonDev/gameWebUI
+   cd gameWebUI
    ```
 
 2. Install dependencies:
    ```bash
    npm install
    ```
+3. Create the .env file and get the SteamGridDB API key:
+   Add the following line to the .env file:
+   ```
+   STEAMGRID=STEAMGRID_API_KEY
+   ```
+   Replace `STEAMGRID_API_KEY` with your actual SteamGridDB API key.
 
-3. Start the server:
+4. Start the server:
    ```bash
    npm start
    ```
@@ -48,67 +53,42 @@ The application follows a client-server architecture:
    npm run dev
    ```
 
-4. Open your browser and navigate to:
+5. Open your browser and navigate to:
    ```
    http://localhost:3000
    ```
-
-## Configuration
-
-The application will create a `config.json` file in the project root with default settings. You can modify this file directly or use the web interface to change settings.
 
 ### Default Configuration
 
 ```json
 {
-  "version": 1,
-  "gameDirectories": [
-    "/path/to/your/games"
-  ],
-  "autoScan": true,
-  "scanInterval": 60,
-  "defaultView": "grid",
-  "theme": {
-    "primaryColor": "#6c5ce7",
-    "darkMode": true
-  }
+   "version": 1,
+   "directories": [
+      "/home/salmon/Games",
+      "/home/salmon/.local/share/Steam/steamapps/common"
+   ]
 }
 ```
 
 ## Usage
 
 1. **Add Game Directories**:
-   - Go to Settings > Game Directories
-   - Click "Add Directory" and enter the path to your games folder
-   - The app will automatically scan for games
+   - Game dirs can be added in the settings tab
 
 2. **Launch Games**:
    - Click on any game in your library to launch it
-
-3. **Customize Appearance**:
-   - Toggle between dark/light mode in Settings > Appearance
-   - Change the primary color theme
-
-## Development
-
-### Project Structure
-
-```
-game-launcher/
-├── public/               # Frontend files
-│   ├── index.html        # Main HTML file
-│   ├── styles.css        # Main styles
-│   └── script.js         # Frontend JavaScript
-├── server.js            # Backend server
-├── config.json          # Configuration file (auto-created)
-└── package.json         # Project dependencies
-```
 
 ### Available Scripts
 
 - `npm start` - Start the production server
 - `npm run dev` - Start the development server with auto-reload
-- `npm test` - Run tests (coming soon)
+
+## Notes
+
+- If you want to run the server on startup:
+- on Linux, create a systemd service
+- on Windows, create a shortcut in the startup folder 
+- All info regarding services and startup folder can be found on google
 
 ## License
 

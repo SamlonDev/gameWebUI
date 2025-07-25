@@ -5,16 +5,124 @@ let navItems;
 let pages;
 let searchInput;
 let refreshBtn;
+let cardSizeSlider;
+let gamesContainer;
 
 // Initialize UI module
-export function initUI(elements) {
+export async function initUI(elements) {
     ({ navItems, pages, searchInput, refreshBtn } = elements);
+    
+    // Initialize DOM elements
+    cardSizeSlider = document.getElementById('cardSizeSlider');
+    gamesContainer = document.querySelector('.games-container');
+    
+    // Wait for config to be loaded
+    if (window.loadConfig) {
+        try {
+            console.log('Loading configuration...');
+            await window.loadConfig();
+            console.log('Configuration loaded, window.config:', window.config);
+        } catch (error) {
+            console.error('Failed to load configuration:', error);
+            // Initialize empty config if loading fails
+            window.config = { cardSize: 'medium' };
+        }
+    } else {
+        console.warn('window.loadConfig not found, using default config');
+        window.config = { cardSize: 'medium' };
+    }
+    
+    // Set up card size slider if it exists
+    if (cardSizeSlider) {
+        console.log('Setting up card size controls...');
+        setupCardSizeControls();
+    } else {
+        console.error('Card size slider not found in the DOM');
+    }
+    
     initNavigation();
     setupEventListeners();
     
     // Show initial page based on URL hash
     const initialPage = window.location.hash ? window.location.hash.substring(1) : 'library';
     showPage(initialPage);
+}
+
+// Set up card size slider controls
+function setupCardSizeControls() {
+    // Set initial slider value based on config
+    const sizeToValue = { 'small': 0, 'medium': 1, 'large': 2, 'xlarge': 3 };
+    const currentSize = window.config?.cardSize || 'medium';
+    
+    // Ensure the slider value is valid
+    if (cardSizeSlider) {
+        cardSizeSlider.value = sizeToValue[currentSize] || 1; // Default to 'medium' if invalid
+    }
+    
+    updateCardSize(currentSize);
+    
+    // Add debounce function to prevent too many rapid updates
+    let debounceTimer;
+    
+    // Add event listener for slider changes
+    cardSizeSlider.addEventListener('input', (e) => {
+        console.log('Card size slider moved to value:', e.target.value);
+        const sizes = ['small', 'medium', 'large', 'xlarge'];
+        const selectedSize = sizes[parseInt(e.target.value)];
+        
+        console.log('Updating card size to:', selectedSize);
+        
+        // Update UI immediately
+        updateCardSize(selectedSize);
+        
+        // Update config immediately for local state
+        if (window.config) {
+            console.log('Updating local config with cardSize:', selectedSize);
+            window.config.cardSize = selectedSize;
+            
+            // Debounce the save to prevent too many rapid saves
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(async () => {
+                console.log('Saving configuration with cardSize:', selectedSize);
+                if (window.saveConfig) {
+                    try {
+                        console.log('Calling saveConfig...');
+                        const success = await window.saveConfig();
+                        console.log('Configuration save successful:', success);
+                        
+                        // Update the UI to reflect the new card size
+                        updateCardSize(selectedSize);
+                    } catch (error) {
+                        console.error('Error saving card size:', error);
+                        // Revert the UI if save fails
+                        const currentSize = window.config?.cardSize || 'medium';
+                        updateCardSize(currentSize);
+                        
+                        // Reset the slider to the current config value
+                        const sizeToValue = { 'small': 0, 'medium': 1, 'large': 2, 'xlarge': 3 };
+                        cardSizeSlider.value = sizeToValue[currentSize];
+                    }
+                } else {
+                    console.error('window.saveConfig is not defined');
+                    // Revert the slider if saveConfig is not available
+                    const currentSize = window.config?.cardSize || 'medium';
+                    const sizeToValue = { 'small': 0, 'medium': 1, 'large': 2, 'xlarge': 3 };
+                    cardSizeSlider.value = sizeToValue[currentSize];
+                }
+            }, 300); // 300ms debounce time
+        }
+    });
+}
+
+// Update card size in the UI
+function updateCardSize(size) {
+    if (!gamesContainer) return;
+    
+    // Remove all size classes
+    gamesContainer.classList.remove('small-cards', 'medium-cards', 'large-cards', 'xlarge-cards');
+    
+    // Add the selected size class
+    gamesContainer.classList.add(`${size}-cards`);
 }
 
 // Navigation functions
@@ -160,9 +268,6 @@ export function renderGames(games) {
                 <img src="${gameImage}" alt="${escapeHtml(gameTitle)}" 
                     title="${escapeHtml(gameTitle)}" />
                 <div class="game-overlay">
-                    <h3 class="game-title" title="${escapeHtml(gameTitle)}">
-                        ${escapeHtml(gameTitle)}
-                    </h3>
                     <button class="play-button" data-id="${game.id}" title="Play ${escapeHtml(gameTitle)}">
                         <i class="fas fa-play"></i> Play
                     </button>

@@ -10,7 +10,7 @@ const ENDPOINTS = {
 export async function apiFetch(endpoint, options = {}) {
     try {
         console.log(`API Request: ${endpoint}`, options);
-        
+
         const response = await fetch(endpoint, {
             headers: {
                 'Content-Type': 'application/json',
@@ -18,16 +18,16 @@ export async function apiFetch(endpoint, options = {}) {
             },
             ...options,
             // Ensure body is stringified if it's an object
-            body: options.body && typeof options.body === 'object' 
-                ? JSON.stringify(options.body) 
+            body: options.body && typeof options.body === 'object'
+                ? JSON.stringify(options.body)
                 : options.body
         });
-        
+
         const data = await response.json().catch(() => ({
             status: 'error',
             message: 'Invalid JSON response'
         }));
-        
+
         console.log(`API Response (${endpoint}):`, data);
 
         if (!response.ok) {
@@ -55,10 +55,32 @@ export async function loadConfig() {
 
 export async function saveConfig(config) {
     try {
-        return await apiFetch(ENDPOINTS.CONFIG, {
+        // Create a clean config object with only the fields we want to save
+        const cleanConfig = {
+            version: config.version || 1,
+            directories: Array.isArray(config.directories) 
+                ? [...config.directories] 
+                : [],
+            cardSize: ['small', 'medium', 'large', 'xlarge'].includes(config.cardSize)
+                ? config.cardSize
+                : 'medium'
+        };
+        
+        console.log('Sending clean config to server:', cleanConfig);
+        const response = await apiFetch(ENDPOINTS.CONFIG, {
             method: 'POST',
-            body: { directories: config.directories || [] }
+            body: cleanConfig
         });
+        
+        console.log('Server response:', response);
+        
+        // Return the response, but make sure it doesn't include any success flags or nested configs
+        if (response && typeof response === 'object') {
+            const { success, config: nestedConfig, ...cleanResponse } = response;
+            return nestedConfig || cleanResponse;
+        }
+        
+        return response;
     } catch (error) {
         console.error('Error saving configuration:', error);
         throw error;
@@ -89,7 +111,7 @@ export async function validateDirectory(path) {
     try {
         return await apiFetch(ENDPOINTS.VALIDATE_DIRECTORY, {
             method: 'POST',
-            body: { path }
+            body: {path}
         });
     } catch (error) {
         console.error('Error validating directory:', error);
