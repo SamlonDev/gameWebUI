@@ -12,6 +12,9 @@
     --border-radius: 8px;
     --transition: all 0.3s ease;
     --border-color: rgba(255, 255, 255, 0.1);
+    --steam-blue: #1b2838;
+    --steam-light-blue: #2a475e;
+    --steam-text: #c7d5e0;
 }
 
 * {
@@ -254,6 +257,39 @@ body {
 
 .game-card:hover .game-cover img {
     transform: scale(1.05);
+}
+
+/* Steam Badge */
+.steam-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: linear-gradient(135deg, var(--steam-blue), var(--steam-light-blue));
+    color: var(--steam-text);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+}
+
+.steam-badge i {
+    font-size: 14px;
+    color: var(--steam-text);
+}
+
+.game-card:hover .steam-badge {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .game-overlay {

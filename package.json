@@ -13,6 +13,7 @@
     "dotenv": "^17.2.1",
     "express": "^4.18.2",
     "igdb-api-node": "^6.0.5",
+    "ini": "^5.0.0",
     "morgan": "^1.10.0",
     "steamgriddb": "^2.2.0"
   },
